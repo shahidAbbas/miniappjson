@@ -6,7 +6,7 @@
     <title>Status Bar Color Demo</title>
 
     <!-- Android/modern browsers -->
-    <meta name="theme-color" content="#111111" id="themeColorMeta" />
+    <meta name="theme-color" content="lightgreen" id="themeColorMeta" />
 
     <!-- iOS PWA hints (installed web app) -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -93,65 +93,7 @@
         <line x1="12" y1="150" x2="12" y2="8" stroke="currentColor" stroke-width="3" marker-end="url(#arrowhead)"></line>
       </svg>
 
-      <p class="caption">Status bar color should be <strong id="colorText">#111111</strong>.</p>
+      <p class="caption">statusbar bg color should be light green</p>
 
-      <section class="panel" role="region" aria-labelledby="controlTitle">
-        <div class="row">
-          <label id="controlTitle" for="colorInput">colorSet</label>
-          <input id="colorInput" type="text" placeholder="#111111 | rgb(17,17,17) | tomato" autocomplete="off" />
-          <span class="swatch" title="Preview"></span>
-          <button id="applyBtn" type="button">Apply</button>
-        </div>
-        <div id="error" class="error">That doesn’t look like a valid CSS color. Try a hex value like <code>#ff6600</code> or a named color like <code>tomato</code>.</div>
-        <p class="hint">Tip: This updates <code>&lt;meta name="theme-color"&gt;</code> so supported browsers tint the status bar. On iOS, the effect is most visible when the page is added to Home Screen or in newer Safari versions.</p>
-      </section>
-    </main>
-
-    <script>
-      const meta = document.querySelector('#themeColorMeta');
-      const input = document.querySelector('#colorInput');
-      const btn = document.querySelector('#applyBtn');
-      const text = document.querySelector('#colorText');
-      const swatch = document.querySelector('.swatch');
-      const errorEl = document.querySelector('#error');
-
-      function isValidCssColor(value) {
-        const s = new Option().style; // creates a CSSStyleDeclaration
-        s.color = '';
-        s.color = value.trim();
-        return s.color !== '';
-      }
-
-      function setThemeColor(color) {
-        document.documentElement.style.setProperty('--status-color', color);
-        meta.setAttribute('content', color);
-        text.textContent = color;
-        swatch.style.background = color;
-        try { localStorage.setItem('statusbarColor', color); } catch (_) {}
-      }
-
-      function apply() {
-        const val = input.value.trim();
-        if (!val) return;
-        if (!isValidCssColor(val)) {
-          errorEl.style.display = 'block';
-          return;
-        }
-        errorEl.style.display = 'none';
-        setThemeColor(val);
-      }
-
-      btn.addEventListener('click', apply);
-      input.addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
-
-      // Restore previous color or default
-      (function init() {
-        let saved = null;
-        try { saved = localStorage.getItem('statusbarColor'); } catch (_) {}
-        const initial = saved || getComputedStyle(document.documentElement).getPropertyValue('--status-color').trim() || '#111111';
-        setThemeColor(initial);
-        input.value = initial;
-      })();
-    </script>
-  </body>
+          </main></body>
 </html>
