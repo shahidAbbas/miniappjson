@@ -13,6 +13,6 @@
     }
   },
   "navigationBar": {
-    "visible": false
+    "visible": true
   }
 }
