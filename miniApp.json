@@ -1,6 +1,6 @@
 {
   "version": "2.0",
-  "fullScreen": false,
+  "fullScreen": true,
   "theme": "app-default",
   "statusBar": {
     "theme": {
