@@ -88,20 +88,91 @@
       .page { padding: 16px 16px 24px; }
     </style>
   </head>
-  <body>
-    <header class="header" role="banner" aria-label="Header"></header>
-    <main class="page">
-      <!-- Arrow pointing toward the status bar (top of the screen) -->
-      <svg class="pointer" viewBox="0 0 24 160" aria-hidden="true">
-        <defs>
-          <marker id="arrowhead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
-            <polygon points="0 0, 6 3, 0 6"></polygon>
-          </marker>
-        </defs>
-        <line x1="12" y1="150" x2="12" y2="8" stroke="currentColor" stroke-width="3" marker-end="url(#arrowhead)"></line>
-      </svg>
+<body>
+  <main class="wrap">
+    <!-- Arrow -->
+    <svg class="pointer" viewBox="0 0 24 110" aria-hidden="true">
+      <defs><marker id="arrowhead" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
+        <polygon points="0 0, 6 3, 0 6"></polygon>
+      </marker></defs>
+      <line x1="12" y1="100" x2="12" y2="8" stroke="currentColor" stroke-width="3" marker-end="url(#arrowhead)"></line>
+    </svg>
 
-      <p class="caption">statusbar bg color should be light green</p>
-    </main>
-  </body>
+    <!-- Required copy (as you wrote it) -->
+    <p class="caption">Below selected color will be reflected in as the statusBar bg color</p>
+
+    <!-- Selected color line -->
+    <p class="selected-line">
+      selected color:
+      <span class="chip">
+        <span id="selText">#90EE90</span>
+        <span id="selSwatch" class="swatch" style="background:#90EE90;"></span>
+      </span>
+    </p>
+
+    <!-- Compact controls: color, token, save -->
+    <div class="controls" role="group" aria-label="Color controls">
+      <input id="colorHex" type="color" value="#90EE90" aria-label="Color picker">
+      <input id="colorText" type="text" value="#90EE90" placeholder="#RRGGBB" aria-label="Color hex">
+      <button id="saveBtn" type="button">Save</button>
+    </div>
+
+    <!-- Optional admin token (kept small to avoid scroll). Remove if you secure elsewhere. -->
+    <div class="controls" style="grid-template-columns: 1fr;" aria-label="Admin token">
+      <input id="adminToken" type="password" placeholder="Admin token" autocomplete="off">
+    </div>
+
+    <div class="msg" id="saveMsg"></div>
+    <p class="hint">Saving updates <code>miniApp.json</code> in Git &rarr; Vercel redeploys &rarr; this page will reflect on next load.</p>
+  </main>
+
+  <script>
+    // Minimal UI logic (does NOT touch <meta name="theme-color">)
+    const hex  = document.getElementById('colorHex');
+    const txt  = document.getElementById('colorText');
+    const sw   = document.getElementById('selSwatch');
+    const stxt = document.getElementById('selText');
+    const btn  = document.getElementById('saveBtn');
+    const tok  = document.getElementById('adminToken');
+    const msg  = document.getElementById('saveMsg');
+
+    function setLocal(c) {
+      stxt.textContent = c;
+      sw.style.background = c;
+    }
+    hex.addEventListener('input', () => { txt.value = hex.value; setLocal(hex.value); });
+    txt.addEventListener('input', () => { setLocal(txt.value.trim()); });
+
+    // Load current from miniApp.json so UI matches deployed config
+    (async () => {
+      try {
+        const res = await fetch('/miniApp.json?ts=' + Date.now());
+        const cfg = await res.json();
+        const c = cfg.statusBarBgColor || '#90EE90';
+        hex.value = /^#([0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(c) ? c : '#90EE90';
+        txt.value = c;
+        setLocal(c);
+      } catch {}
+    })();
+
+    btn.addEventListener('click', async () => {
+      const color = txt.value.trim();
+      msg.textContent = 'Saving…';
+      try {
+        const r = await fetch('/api/set-color', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + tok.value
+          },
+          body: JSON.stringify({ color })
+        });
+        if (!r.ok) throw new Error(await r.text());
+        msg.textContent = 'Saved ✅ Vercel will redeploy automatically.';
+      } catch (e) {
+        msg.textContent = 'Failed: ' + e.message;
+      }
+    });
+  </script>
+</body>
 </html>
