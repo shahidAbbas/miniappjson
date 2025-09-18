@@ -1,60 +1,87 @@
-// api/set-color.js
-// Updates miniApp.json in GitLab and commits to trigger a Vercel redeploy.
-const ok = (res, code, body) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
-  return res.status(code).send(body);
+// api/set-color.js — GitHub variant (Node.js Serverless)
+// Edits ONLY statusBar.theme.light.backgroundColor in miniApp.json and commits to trigger redeploy.
+
+const ok = (res, code, body, type = "text/plain") => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+  res.status(code).setHeader("Content-Type", type).send(body);
 };
 
+function setNested(obj, path, value) {
+  const keys = Array.isArray(path) ? path : path.split(".");
+  let cur = obj;
+  for (let i = 0; i < keys.length - 1; i++) {
+    const k = keys[i];
+    if (cur[k] == null || typeof cur[k] !== "object") cur[k] = {};
+    cur = cur[k];
+  }
+  cur[keys[keys.length - 1]] = value;
+  return obj;
+}
+
 module.exports = async (req, res) => {
-  if (req.method === 'OPTIONS') return ok(res, 204, '');
+  if (req.method === "OPTIONS") return ok(res, 204, "");
+  if (req.method !== "POST")   return ok(res, 405, "Method not allowed");
 
   try {
-    if (req.method !== 'POST') return ok(res, 405, 'Method not allowed');
+    // ---- Auth (shared secret) ----
+    const expected = process.env.ADMIN_SECRET;
+    const provided = (req.headers.authorization || "").replace(/^Bearer\s+/i, "").trim();
+    if (!expected) return ok(res, 500, "Missing ADMIN_SECRET");
+    if (provided !== expected) return ok(res, 401, "Unauthorized");
 
-    // simple shared-secret auth
-    const auth = req.headers.authorization || '';
-    const tokenOk = auth.startsWith('Bearer ') && auth.split(' ')[1] === process.env.ADMIN_SECRET;
-    if (!tokenOk) return ok(res, 401, 'Unauthorized');
-
-    const body = typeof req.body === 'string' ? JSON.parse(req.body) : req.body;
+    // ---- Parse input ----
+    const body = typeof req.body === "string" ? JSON.parse(req.body) : req.body;
     const color = body?.color;
-    if (!color) return ok(res, 400, 'Missing color');
+    if (!color || typeof color !== "string") return ok(res, 400, "Missing or invalid color");
 
-    const projectId = process.env.GITLAB_PROJECT_ID;       // e.g. 12345678
-    const branch    = process.env.GITLAB_BRANCH || 'main';
-    const filePath  = process.env.JSON_FILE_PATH || 'miniApp.json';
-    const apiBase   = process.env.GITLAB_API_BASE || 'https://gitlab.com/api/v4';
-    const glToken   = process.env.GITLAB_TOKEN;            // PAT with write_repository
+    // ---- Env for GitHub ----
+    const GH_TOKEN = process.env.GH_TOKEN;
+    const GH_REPO  = process.env.GH_REPO;   // "owner/repo"
+    const GH_BRANCH = process.env.GH_BRANCH || "main";
+    const JSON_FILE_PATH = process.env.JSON_FILE_PATH || "miniApp.json";
+    if (!GH_TOKEN || !GH_REPO) {
+      return ok(res, 500, "Missing GH_TOKEN or GH_REPO");
+    }
 
-    // 1) Read existing file (base64)
-    const getUrl = `${apiBase}/projects/${encodeURIComponent(projectId)}/repository/files/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(branch)}`;
-    const getRes = await fetch(getUrl, { headers: { 'PRIVATE-TOKEN': glToken } });
-    if (!getRes.ok) return ok(res, 500, 'Fetch file failed: ' + (await getRes.text()));
+    const api = "https://api.github.com";
+    const headers = {
+      "Authorization": `Bearer ${GH_TOKEN}`,
+      "Accept": "application/vnd.github+json",
+      "Content-Type": "application/json",
+    };
+
+    // ---- 1) Get existing file ----
+    const getUrl = `${api}/repos/${GH_REPO}/contents/${encodeURIComponent(JSON_FILE_PATH)}?ref=${encodeURIComponent(GH_BRANCH)}`;
+    const getRes = await fetch(getUrl, { headers });
+    if (!getRes.ok) {
+      const t = await getRes.text();
+      return ok(res, 500, `Fetch file failed (${getRes.status}): ${t}`);
+    }
     const file = await getRes.json();
-    const cur  = JSON.parse(Buffer.from(file.content, 'base64').toString('utf8'));
+    const current = JSON.parse(Buffer.from(file.content, "base64").toString("utf8"));
 
-    // 2) Update JSON
-    const updated = { ...cur, statusBarBgColor: color };
-    const newContent = JSON.stringify(updated, null, 2) + '\n';
+    // ---- 2) Update nested field ONLY ----
+    const updated = setNested(current, ["statusBar","theme","light","backgroundColor"], color);
+    const newB64  = Buffer.from(JSON.stringify(updated, null, 2) + "\n").toString("base64");
 
-    // 3) Commit update
-    const putUrl = `${apiBase}/projects/${encodeURIComponent(projectId)}/repository/files/${encodeURIComponent(filePath)}`;
-    const putRes = await fetch(putUrl, {
-      method: 'PUT',
-      headers: { 'PRIVATE-TOKEN': glToken, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        branch,
-        content: newContent,
-        commit_message: `chore: set statusBarBgColor to ${color}`
-      })
-    });
-    if (!putRes.ok) return ok(res, 500, 'Commit failed: ' + (await putRes.text()));
+    // ---- 3) Commit update ----
+    const putUrl = `${api}/repos/${GH_REPO}/contents/${encodeURIComponent(JSON_FILE_PATH)}`;
+    const putBody = {
+      message: `chore: set statusBar.theme.light.backgroundColor to ${color}`,
+      content: newB64,
+      sha: file.sha,
+      branch: GH_BRANCH,
+    };
+    const putRes = await fetch(putUrl, { method: "PUT", headers, body: JSON.stringify(putBody) });
+    if (!putRes.ok) {
+      const t = await putRes.text();
+      return ok(res, 500, `Commit failed (${putRes.status}): ${t}`);
+    }
 
-    return ok(res, 200, JSON.stringify({ ok: true, color }));
+    return ok(res, 200, JSON.stringify({ ok: true, color }), "application/json");
   } catch (e) {
-    console.error(e);
-    return ok(res, 500, 'Server error');
+    return ok(res, 500, `Server error: ${e && e.message ? e.message : String(e)}`);
   }
 };
